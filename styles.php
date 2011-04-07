@@ -1,16 +1,4 @@
 /***
-*** General Table Styles
-***/
-
-.blocks-quickmail .generaltable .r0 {
-    background-color: #f0f0f0;
-}
-
-.blocks-quickmail .generaltable .r1 {
-    background-color: #fafafa;
-}
-
-/***
 *** Flexible Table Styles (emaillog.php)
 ***/
 

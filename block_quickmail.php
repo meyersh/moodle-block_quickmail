@@ -1,4 +1,4 @@
-<?php // $Id: block_quickmail.php,v 1.10 2007-03-02 03:06:53 mark-nielsen Exp $
+<?php
 /**
  * Quickmail - Allows teachers and students to email one another
  *      at a course level.  Also supports group mode so students
@@ -7,7 +7,8 @@
  *      editing a Quickmail instance.
  *
  * @author Mark Nielsen
- * @version $Id: block_quickmail.php,v 1.10 2007-03-02 03:06:53 mark-nielsen Exp $
+ * @author Charles Fulton
+ * @version 2.00
  * @package quickmail
  **/ 
 
@@ -28,7 +29,6 @@ class block_quickmail extends block_list {
      **/
     function init() {
         $this->title = get_string('blockname', 'block_quickmail');
-        $this->version = 2006021501;  // YYYYMMDDXX
     }
     
     /**
@@ -37,7 +37,7 @@ class block_quickmail extends block_list {
      * @return object An object with an array of items, an array of icons, and a string for the footer
      **/
     function get_content() {
-        global $USER, $CFG;
+        global $CFG, $OUTPUT;
 
         if($this->content !== NULL) {
             return $this->content;
@@ -53,29 +53,18 @@ class block_quickmail extends block_list {
         }
 
     /// link to composing an email
-        $this->content->items[] = "<a href=\"$CFG->wwwroot/blocks/quickmail/email.php?id={$this->course->id}&amp;instanceid={$this->instance->id}\">".
+        $this->content->items[] = "<a href=\"$CFG->wwwroot/blocks/quickmail/email.php?id={$this->page->course->id}&amp;instanceid={$this->instance->id}\">".
                                     get_string('compose', 'block_quickmail').'</a>';
 
-        $this->content->icons[] = '<img src="'.$CFG->pixpath.'/i/email.gif" height="16" width="16" alt="'.get_string('email').'" />';
+        $this->content->icons[] = '<img src="'.$OUTPUT->pix_url('/i/email'). '" height="16" width="16" alt="'.get_string('email').'" />';
 
     /// link to history log
-        $this->content->items[] = "<a href=\"$CFG->wwwroot/blocks/quickmail/emaillog.php?id={$this->course->id}&amp;instanceid={$this->instance->id}\">".
+        $this->content->items[] = "<a href=\"$CFG->wwwroot/blocks/quickmail/emaillog.php?id={$this->page->course->id}&amp;instanceid={$this->instance->id}\">".
                                     get_string('history', 'block_quickmail').'</a>';
 
-        $this->content->icons[] = '<img src="'.$CFG->pixpath.'/t/log.gif" height="14" width="14" alt="'.get_string('log').'" />';
+        $this->content->icons[] = '<img src="'.$OUTPUT->pix_url('t/log'). '" height="14" width="14" alt="'.get_string('log', 'admin').'" />';
 
         return $this->content;
-    }
-
-    /**
-     * Loads the course
-     *
-     * @return void
-     **/
-    function specialization() {
-        global $COURSE;
-
-        $this->course = $COURSE;
     }
 
     /**
@@ -84,7 +73,10 @@ class block_quickmail extends block_list {
      * @return boolean
      **/
     function instance_delete() {
-        return delete_records('block_quickmail_log', 'courseid', $this->course->id);
+        global $CFG, $DB;
+        if($CFG->quickmail_deletehistory) {
+            return $DB->delete_records('block_quickmail_log', array('courseid' => $this->page->course->id));
+        } else return true;
     }
 
     /**
@@ -94,7 +86,8 @@ class block_quickmail extends block_list {
      **/
     function instance_create() {
         $this->config = new stdClass;
-        $this->config->groupmode = $this->course->groupmode;
+        $this->config->groupmode = $this->page->course->groupmode;
+        $this->config->defaultformat = (can_use_html_editor()) ? FORMAT_HTML : FORMAT_PLAIN;
         $pinned = (!isset($this->instance->pageid));
         return $this->instance_config_commit($pinned);
     }
@@ -115,16 +108,6 @@ class block_quickmail extends block_list {
      **/
     function check_permission() {
         return has_capability('block/quickmail:cansend', get_context_instance(CONTEXT_BLOCK, $this->instance->id));
-    }
-
-    /**
-     * Get the groupmode of Quickmail.  This function pays
-     * attention to the course group mode force.
-     *
-     * @return int The group mode of the block
-     **/
-    function groupmode() {
-        return groupmode($this->course, $this->config);
     }
 }
 ?>

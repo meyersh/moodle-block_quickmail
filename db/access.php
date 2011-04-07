@@ -31,17 +31,17 @@
 // For the core capabilities, the variable is $moodle_capabilities.
 
 
-$block_quickmail_capabilities = array(
+$capabilities = array(
 
     'block/quickmail:cansend' => array(
 
         'captype' => 'write',
         'contextlevel' => CONTEXT_BLOCK,
-        'legacy' => array(
+        'archetypes' => array(
             'teacher' => CAP_ALLOW,
             'editingteacher' => CAP_ALLOW,
             'coursecreator' => CAP_ALLOW,
-            'admin' => CAP_ALLOW
+            'manager' => CAP_ALLOW
         )
     ),
 );

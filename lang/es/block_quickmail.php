@@ -1,10 +1,10 @@
-<?php // $Id: block_quickmail.php,v 1.3 2007-03-02 03:06:55 mark-nielsen Exp $
+<?php
 
 /**
  * Language entries for Quickmail
  *
  * @author Mark Nielsen; Translation provided by Rodrigo Filgueira
- * @version $Id: block_quickmail.php,v 1.3 2007-03-02 03:06:55 mark-nielsen Exp $
+ * @version 1.3
  * @package quickmail
  **/
 

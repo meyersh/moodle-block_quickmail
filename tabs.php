@@ -1,14 +1,15 @@
-<?php // $Id: tabs.php,v 1.2 2007-03-02 03:06:53 mark-nielsen Exp $
+<?php
 /**
  * Tabs for Quickmail
  *
  * @author Mark Nielsen
- * @version $Id: tabs.php,v 1.2 2007-03-02 03:06:53 mark-nielsen Exp $
+ * @author Charles Fulton
+ * @version 2.00
  * @package quickmail
  **/
 
     if (empty($course)) {
-        error('Programmer error: cannot call this script without $course set');
+        print_error('Programmer error: cannot call this script without $course set');
     }
     if (!isset($instanceid)) {
         $instanceid = 0;

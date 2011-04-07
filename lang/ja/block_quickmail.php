@@ -1,7 +1,9 @@
-<?PHP // $Id: block_quickmail.php,v 1.5 2007-03-02 03:06:55 mark-nielsen Exp $ 
-      // block_quickmail.php - created with Moodle 1.8 dev (2007012500)
-
-
+<?php
+/**
+ * @author Mark Nielsen
+ * @version unknown
+ * @package quickmail
+ */
 $string['action'] = '操作';
 $string['areyousure'] = '本当に履歴中のすべてのメールを削除してもよろしいですか?';
 $string['attachment'] = '添付';

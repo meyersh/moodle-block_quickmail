@@ -1,4 +1,4 @@
-<?php // $Id: emaillog.php,v 1.14 2007-08-30 17:33:48 mark-nielsen Exp $
+<?php
 /**
  * emaillog.php - displays a log (or history) of all emails sent by
  *      a specific in a specific course.  Each email log can be viewed
@@ -6,7 +6,8 @@
  *
  * @todo Add a print option?
  * @author Mark Nielsen
- * @version $Id: emaillog.php,v 1.14 2007-08-30 17:33:48 mark-nielsen Exp $
+ * @author Charles Fulton
+ * @version 2.00
  * @package quickmail
  **/
     
@@ -20,17 +21,17 @@
 
     $instance = new stdClass;
 
-    if (!$course = get_record('course', 'id', $id)) {
-        error('Course ID was incorrect');
+    if (!$course = $DB->get_record('course', array('id' => $id))) {
+        print_error('Course ID was incorrect');
     }
 
     require_login($course->id);
 
     if ($instanceid) {
-        $instance = get_record('block_instance', 'id', $instanceid);
+        $instance = $DB->get_record('block_instances', array('id' => $instanceid));
     } else {
-        if ($quickmailblock = get_record('block', 'name', 'quickmail')) {
-            $instance = get_record('block_instance', 'blockid', $quickmailblock->id, 'pageid', $course->id);
+        if ($quickmailblock = $DB->get_record('block', array('name' => 'quickmail'))) {
+            $instance = $DB->get_record('block_instance', array('blockid' => $quickmailblock->id, 'pageid' => $course->id));
         }
     }
 
@@ -49,8 +50,10 @@
     }
     
     if (!$haspermission) {
-        error('Sorry, you do not have the correct permissions to use Quickmail.');
+        print_error('Sorry, you do not have the correct permissions to use Quickmail.');
     }
+
+    $PAGE->set_url('/blocks/quickmail/emaillog.php', array('id' => $id, 'instanceid' => $instanceid));
     
     // log deleting happens here (NOTE: reporting is handled below)
     $dumpresult = false;
@@ -59,9 +62,9 @@
         
         // delete a single log or all of them
         if ($emailid = optional_param('emailid', 0, PARAM_INT)) {
-            $dumpresult = delete_records('block_quickmail_log', 'id', $emailid);
+            $dumpresult = $DB->delete_records('block_quickmail_log', array('id' => $emailid));
         } else {
-            $dumpresult = delete_records('block_quickmail_log', 'userid', $USER->id);
+            $dumpresult = $DB->delete_records('block_quickmail_log', array('userid' => $USER->id));
         }
     }
 
@@ -97,30 +100,23 @@
     $table->setup();  
     
 /// SQL
-    $sql = "SELECT * 
-              FROM {$CFG->prefix}block_quickmail_log
-             WHERE courseid = $course->id 
-               AND userid = $USER->id ";
-
-    if ($table->get_sql_where()) {
-        $sql .= 'AND '.$table->get_sql_where();
-    }
-
+    $sql = "SELECT * FROM {block_quickmail_log} WHERE courseid = ?  AND userid = ?";
+    $query_params = array($course->id, $USER->id);
     $sql .= ' ORDER BY '. $table->get_sql_sort();
 
 /// set page size
-    $total = count_records('block_quickmail_log', 'courseid', $course->id, 'userid', $USER->id);
+    $total = $DB->count_records('block_quickmail_log', array('courseid' => $course->id, 'userid' => $USER->id));
     $table->pagesize(10, $total);
-
-    if ($pastemails = get_records_sql($sql, $table->get_page_start(), $table->get_page_size())) {
+  
+    if ($pastemails = $DB->get_records_sql($sql, $query_params, $table->get_page_start(), $table->get_page_size())) {
         foreach ($pastemails as $pastemail) {
             $table->add_data( array(userdate($pastemail->timesent),
                                     s($pastemail->subject),
                                     format_string($pastemail->attachment, true),
                                     "<a href=\"email.php?id=$course->id&amp;instanceid=$instanceid&amp;emailid=$pastemail->id&amp;action=view\">".
-                                    "<img src=\"$CFG->pixpath/i/search.gif\" height=\"14\" width=\"14\" alt=\"".get_string('view').'" /></a> '.
+                                    "<img src=\"".$OUTPUT->pix_url('/i/search')."\" height=\"14\" width=\"14\" alt=\"".get_string('view').'" /></a> '.
                                     "<a href=\"emaillog.php?id=$course->id&amp;instanceid=$instanceid&amp;sesskey=$USER->sesskey&amp;action=dump&amp;emailid=$pastemail->id\">".
-                                    "<img src=\"$CFG->pixpath/t/delete.gif\" height=\"11\" width=\"11\" alt=\"".get_string('delete').'" /></a>'));
+                                    "<img src=\"".$OUTPUT->pix_url('t/delete')."\" height=\"11\" width=\"11\" alt=\"".get_string('delete').'" /></a>'));
         }
     }
     
@@ -148,7 +144,7 @@
 
     print_header("$course->fullname: $strquickmail", $course->fullname, "$navigation $strquickmail", '', '', true, $button);
 
-    print_heading($strquickmail);
+    echo $OUTPUT->heading($strquickmail);
     
     $currenttab = 'history';
     include($CFG->dirroot.'/blocks/quickmail/tabs.php');
@@ -161,16 +157,17 @@
             notify(get_string('deletefail', 'block_quickmail'));
         }
     }
-
+    
     if ($action == 'confirm') {
-        notice_yesno(get_string('areyousure', 'block_quickmail'), 
-                     "$CFG->wwwroot/blocks/quickmail/emaillog.php?id=$course->id&amp;instanceid=$instanceid&amp;sesskey=".sesskey()."&amp;action=dump",
-                     "$CFG->wwwroot/blocks/quickmail/emaillog.php?id=$course->id&amp;instanceid=$instanceid");
+        echo $OUTPUT->confirm(
+                      get_string('areyousure', 'block_quickmail'),
+                      new single_button(new moodle_url("$CFG->wwwroot/blocks/quickmail/emaillog.php?id=$course->id&amp;instanceid=$instanceid&amp;sesskey=".sesskey()."&amp;action=dump"),get_string('yes')),
+                      new single_button(new moodle_url("$CFG->wwwroot/blocks/quickmail/emaillog.php?id=$course->id&amp;instanceid=$instanceid"),get_string('no')));            
     } else {
         echo '<div id="tablecontainer">';
         $table->print_html();
         echo '</div>';
     }
 
-    print_footer();
+    echo $OUTPUT->footer();
 ?>

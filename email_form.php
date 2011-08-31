@@ -1,63 +1,158 @@
 <?php
-/**
- * @author Charles Fulton
- * @version 2.00
- * @package quickmail
- */
-    require_once("$CFG->libdir/formslib.php");
-    
-    class quickmail_email_form extends moodleform {
-        
-        var $userlist;		// special user table
 
-        function __construct($userlist) {
-            $this->userlist = $userlist;
-            moodleform::moodleform();
-        }
-        
-        function definition() {
-            global $CFG;
-            
-            $mform =& $this->_form;
+require_once($CFG->libdir . '/formslib.php');
 
-            // Recipients                
-            // Display lists
-            $select_lists = array();
-            foreach($this->userlist as $groupid => $list) {
-                $select =& $mform->createElement('select',$groupid,'',$list);
-                $select->setMultiple(true);
-                $select_lists[] = $select;
-            }
-            $mform->addGroup($select_lists, 'mailto', get_string('to', 'block_quickmail'), false);
-            $mform->addRule('mailto', null, 'required', null);
-            
-            // Subject
-            $mform->addElement('text', 'subject', get_string('subject', 'forum'), array('size' => '60'));
-            $mform->addRule('subject', null, 'required');
-            
-            // Message
-            $mform->addElement('htmleditor', 'message', get_string('message', 'forum'));
-            $mform->setType('message', PARAM_RAW);
-            $mform->addRule('message', null, 'required', null, 'client');
-            
-            // Formatting
-            $options = array(
-                FORMAT_HTML   => get_string('formathtml'),
-            	FORMAT_PLAIN => get_string('formatplain')
-            );
-            $mform->addElement('select','format',get_string('emailformat'), $options);
-            
-            // Attachment
-            $maxbytes = get_max_upload_file_size($CFG->maxbytes, $this->_customdata['maxbytes']);
-            $mform->addElement('filepicker', 'attachment', get_string('attachmentoptional', 'block_quickmail'), null, array('maxbytes' => $maxbytes, 'accepted_types' => '*'));
-            
-            // Hidden stuff
-            $mform->addElement('hidden', 'id');
-            $mform->addElement('hidden', 'instanceid');
-            $mform->addElement('hidden', 'groupmode');
-            
-            // Submit
-            $this->add_action_buttons(true, get_string('sendemail', 'block_quickmail'));
-        }
+class email_form extends moodleform {
+    private function reduce_users($in, $user) {
+        return $in . '<option value="'.$this->option_value($user).'">'.
+               $this->option_display($user).'</option>';
     }
-?>
+
+    private function option_display($user) {
+        $users_to_groups = $this->_customdata['users_to_groups'];
+
+        $groups = (empty($users_to_groups[$user->id])) ? 
+                  get_string('no_section', 'block_quickmail') :
+                  implode(',', array_map(function($group) {
+                    return $group->name;
+                  },
+                  $users_to_groups[$user->id]));
+
+        return sprintf("%s (%s)", fullname($user), $groups);
+    }
+
+    private function option_value($user) {
+        $users_to_groups = $this->_customdata['users_to_groups'];
+        $users_to_roles = $this->_customdata['users_to_roles'];
+
+        $roles = implode(',', array_map(function($role) {
+            return $role->shortname;
+        }, $users_to_roles[$user->id]));
+
+        // everyone defaults to none
+        $roles .= ',none';
+
+        $groups = (empty($users_to_groups[$user->id])) ? 0 : implode(',', 
+            array_map(function($group) {
+            return $group->id;
+        }, $users_to_groups[$user->id]));
+
+        return sprintf("%s %s %s", $user->id, $groups, $roles); 
+    }
+
+    public function definition() {
+        global $CFG, $USER, $COURSE, $OUTPUT; 
+
+        $mform =& $this->_form;
+
+        $mform->addElement('hidden', 'mailto', '');
+        $mform->addElement('hidden', 'userid', $USER->id);
+        $mform->addElement('hidden', 'courseid', $COURSE->id);
+        $mform->addElement('hidden', 'type', '');
+        $mform->addElement('hidden', 'typeid', 0);
+
+        $links = array();
+        $email_link = 'emaillog.php?courseid='.$COURSE->id.'&amp;type=';
+        $draft_link = '<center style="margin-left: -13%"><a href="'.$email_link.'drafts">'.
+                        get_string('drafts', 'block_quickmail').'</a>';
+        $links[] =& $mform->createElement('static', 'draft_link', '', $draft_link);
+
+        $context= get_context_instance(CONTEXT_COURSE, $COURSE->id);
+
+        if(has_capability('block/quickmail:cansend', $context)) {
+            $history_link = '<a href="'.$email_link.'log">'.
+                            get_string('history', 'block_quickmail').'</a></center>';
+            $links[] =& $mform->createElement('static', 'history_link', '', $history_link); 
+        }
+
+        $mform->addGroup($links, 'links', '&nbsp;', array(' | '), false);
+
+        $mform->addElement('static', 'from', get_string('from', 'block_quickmail'), $USER->email);
+        $mform->addElement('static', 'selectors', '', '
+            <table>
+                <tr>
+                    <td>
+                        <strong class="required">'.get_string('selected', 'block_quickmail').'
+                            <img class="req" title="Required field" alt="Required field" src="'.$OUTPUT->pix_url('req').'"/>
+                        </strong>
+                    </td>
+                    <td align="right" colspan="2">
+                        <strong>'.get_string('role_filter', 'block_quickmail').'</strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td width="300">
+                        <select id="mail_users" multiple size="30">
+                            '.array_reduce($this->_customdata['selected'], array($this, 'reduce_users'), '').'
+                        </select>
+                    </td>
+                    <td width="100" align="center">
+                        <p>
+                            <input type="button" id="add_button" value="'.get_string('add_button', 'block_quickmail').'"/>
+                        </p>
+                        <p>
+                            <input type="button" id="remove_button" value="'.get_string('remove_button', 'block_quickmail').'"/>
+                        </p>
+                        <p>
+                            <input type="button" id="add_all" value="'.get_string('add_all', 'block_quickmail').'"/>
+                        </p>
+                        <p>
+                            <input type="button" id="remove_all" value="'.get_string('remove_all', 'block_quickmail').'"/>
+                        </p>
+                    </td>
+                    <td width="300" align="right">
+                        <div>
+                            <select id="roles">
+                                <option value="none" selected>'.get_string('no_filter', 'block_quickmail').'</option>
+                                '.array_reduce($this->_customdata['roles'], function($in, $role) {
+                                    return $in . '<option value="'.$role->shortname.'">'.$role->name.'</option>';
+                                 }, '').'
+                            </select>
+                        </div>
+                        <div class="object_labels"><strong>'.get_string('potential_sections', 'block_quickmail').'</strong></div>
+                        <div>
+                            <select id="groups" multiple size="5">
+                                '.array_reduce($this->_customdata['groups'], function($in, $group) {
+                                    return $in . '<option value="'.$group->id.'">'.$group->name.'</option>';
+                                 }, '').'
+                                 <option value="0">'.get_string('no_section', 'block_quickmail').'</option>
+                            </select>
+                        </div>
+                        <div class="object_labels"><strong>'.get_string('potential_users', 'block_quickmail').'</strong></div>
+                        <div>
+                            <select id="from_users" multiple size="20">
+                                '.array_reduce($this->_customdata['users'], array($this, 'reduce_users'), '').'
+                            </select>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        ');
+
+        $mform->addElement('filemanager', 'attachments', get_string('attachment', 'block_quickmail'));
+
+        $mform->addElement('text', 'subject', get_string('subject', 'block_quickmail'));
+        $mform->setType('subject', PARAM_TEXT);        
+        $mform->addRule('subject', null, 'required');
+
+        $mform->addElement('editor', 'message', get_string('message', 'block_quickmail'));
+
+        $options = $this->_customdata['sigs'] + array(-1 => 'No '. get_string('sig', 'block_quickmail'));
+        $mform->addElement('select', 'sigid', get_string('signature', 'block_quickmail'), $options);
+
+        $radio = array(
+            $mform->createElement('radio', 'receipt', '', get_string('yes'), 1),
+            $mform->createElement('radio', 'receipt', '', get_string('no'), 0)
+        );
+
+        $mform->addGroup($radio, 'receipt_action', get_string('receipt', 'block_quickmail'), array(' '), false);
+
+        // TODO: add receipts
+        $buttons = array();
+        $buttons[] =& $mform->createElement('submit', 'send', get_string('send_email', 'block_quickmail'));
+        $buttons[] =& $mform->createElement('submit', 'draft', get_string('save_draft', 'block_quickmail'));
+        $buttons[] =& $mform->createElement('submit', 'cancel', get_string('cancel'));
+
+        $mform->addGroup($buttons, 'buttons', get_string('actions', 'block_quickmail'), array(' '), false);
+    } 
+}

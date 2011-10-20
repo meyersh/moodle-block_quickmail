@@ -11,15 +11,19 @@ class config_form extends moodleform {
                 'courseid' => $this->_customdata['courseid'],
                 'reset' => 1
             )), get_string('reset', 'block_quickmail')
-        ); 
-        $mform->addElement('static', 'reset', '', $reset_link); 
+        );
+        $mform->addElement('static', 'reset', '', $reset_link);
 
         $student_select = array(0 => get_string('no'), 1 => get_string('yes'));
-        $mform->addElement('select', 'allowstudents', get_string('allowstudents', 
+        $mform->addElement('select', 'allowstudents', get_string('allowstudents',
                            'block_quickmail'), $student_select);
-        $roles =& $mform->addElement('select', 'roleselection', get_string('select_roles', 
+        $roles =& $mform->addElement('select', 'roleselection', get_string('select_roles',
                            'block_quickmail'), $this->_customdata['roles']);
         $roles->setMultiple(true);
+
+        $mform->addElement('advcheckbox', 'courseinsubject', get_string('courseinsubject', 'block_quickmail'));
+        $mform->addElement('advcheckbox', 'breadcrumbsinbody', get_string('breadcrumbsinbody', 'block_quickmail'));
+
         $mform->addElement('submit', 'save', get_string('savechanges'));
         $mform->addElement('hidden', 'courseid', $this->_customdata['courseid']);
 

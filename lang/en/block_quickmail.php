@@ -4,11 +4,11 @@ $string['pluginname'] = 'Quickmail';
 $string['quickmail:cansend'] = "Allows users to send email through Quickmail";
 $string['quickmail:canconfig'] = "Allows users to configure Quickmail instance.";
 $string['quickmail:canimpersonate'] = "Allows users to log in as other users and view history.";
-$string['composenew'] = 'Compose New Email'; 
+$string['composenew'] = 'Compose New Email';
 $string['email'] = 'Email';
 $string['drafts'] = 'View Drafts';
 $string['history'] = 'View History';
-$string['log'] = $string['history']; 
+$string['log'] = $string['history'];
 $string['from'] = 'From';
 $string['selected'] = 'Selected Recipients';
 $string['add_button'] = 'Add';
@@ -33,6 +33,10 @@ $string['sig'] ='Signature';
 $string['default_flag'] = 'Default';
 $string['config'] = 'Configuration';
 $string['receipt'] = 'Receive a copy';
+$string['courseinsubject'] = 'Add Course Shortname to Message Subject';
+$string['courseinsubjectdesc'] = 'Setting this to Yes will prefix all Quickmail message subjects with the course shortname.';
+$string['breadcrumbsinbody'] = 'Add Breadcrumbs to Message Body';
+$string['breadcrumbsinbodydesc'] = 'Setting this to Yes will add breadcrumb links to the site and course at the top of every Quickmail message.';
 
 // Config form strings
 $string['allowstudents'] = 'Allow students to use Quickmail';
@@ -41,8 +45,8 @@ $string['reset'] = 'Restore System Defaults';
 
 $string['no_type'] = '{$a} is not in the acceptable type viewer. Please use the applciation correctly.';
 $string['no_email'] = 'Could not email {$a->firstname} {$a->lastname}.';
-$string['no_log'] = 'You have no email history yet.'; 
-$string['no_drafts'] = 'You have no email drafts.'; 
+$string['no_log'] = 'You have no email history yet.';
+$string['no_drafts'] = 'You have no email drafts.';
 $string['no_subject'] = 'You must have a subject';
 $string['no_course'] = 'Invalid Course with id of {$a}';
 $string['no_permission'] = 'You do not have permission to send emails with Quickmail.';

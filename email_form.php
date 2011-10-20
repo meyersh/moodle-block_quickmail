@@ -11,7 +11,7 @@ class email_form extends moodleform {
     private function option_display($user) {
         $users_to_groups = $this->_customdata['users_to_groups'];
 
-        $groups = (empty($users_to_groups[$user->id])) ? 
+        $groups = (empty($users_to_groups[$user->id])) ?
                   get_string('no_section', 'block_quickmail') :
                   implode(',', array_map(function($group) {
                     return $group->name;
@@ -32,24 +32,29 @@ class email_form extends moodleform {
         // everyone defaults to none
         $roles .= ',none';
 
-        $groups = (empty($users_to_groups[$user->id])) ? 0 : implode(',', 
+        $groups = (empty($users_to_groups[$user->id])) ? 0 : implode(',',
             array_map(function($group) {
             return $group->id;
         }, $users_to_groups[$user->id]));
 
-        return sprintf("%s %s %s", $user->id, $groups, $roles); 
+        return sprintf("%s %s %s", $user->id, $groups, $roles);
     }
 
     public function definition() {
-        global $CFG, $USER, $COURSE, $OUTPUT; 
+        global $CFG, $USER, $COURSE, $OUTPUT;
 
         $mform =& $this->_form;
 
-        $mform->addElement('hidden', 'mailto', '');
+        $mform->addElement('hidden', 'mailto');
+        $mform->setType('mailto', PARAM_SEQUENCE);
         $mform->addElement('hidden', 'userid', $USER->id);
+        $mform->setType('userid', PARAM_INT);
         $mform->addElement('hidden', 'courseid', $COURSE->id);
+        $mform->setType('courseid', PARAM_INT);
         $mform->addElement('hidden', 'type', '');
+        $mform->setType('type', PARAM_ACTION);
         $mform->addElement('hidden', 'typeid', 0);
+        $mform->setType('typeid', PARAM_INT);
 
         $links = array();
         $email_link = 'emaillog.php?courseid='.$COURSE->id.'&amp;type=';
@@ -62,7 +67,7 @@ class email_form extends moodleform {
         if(has_capability('block/quickmail:cansend', $context)) {
             $history_link = '<a href="'.$email_link.'log">'.
                             get_string('history', 'block_quickmail').'</a></center>';
-            $links[] =& $mform->createElement('static', 'history_link', '', $history_link); 
+            $links[] =& $mform->createElement('static', 'history_link', '', $history_link);
         }
 
         $mform->addGroup($links, 'links', '&nbsp;', array(' | '), false);
@@ -132,7 +137,7 @@ class email_form extends moodleform {
         $mform->addElement('filemanager', 'attachments', get_string('attachment', 'block_quickmail'));
 
         $mform->addElement('text', 'subject', get_string('subject', 'block_quickmail'));
-        $mform->setType('subject', PARAM_TEXT);        
+        $mform->setType('subject', PARAM_TEXT);
         $mform->addRule('subject', null, 'required');
 
         $mform->addElement('editor', 'message', get_string('message', 'block_quickmail'));
@@ -154,5 +159,14 @@ class email_form extends moodleform {
         $buttons[] =& $mform->createElement('submit', 'cancel', get_string('cancel'));
 
         $mform->addGroup($buttons, 'buttons', get_string('actions', 'block_quickmail'), array(' '), false);
-    } 
+    }
+
+    function validation($data, $files) {
+        $errors = array();
+
+        if (empty($data['mailto'])) {
+            $errors['selectors'] = get_string('err_required', 'form');
+        }
+        return $errors;
+    }
 }

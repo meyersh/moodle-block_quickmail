@@ -15,4 +15,12 @@ if($ADMIN->fulltree) {
     $settings->add(new admin_setting_configmultiselect('block_quickmail_roleselection',
         get_string('select_roles', 'block_quickmail'), get_string('select_roles',
         'block_quickmail'), $defaults, $roles));
+
+    // Option for prefixing the message subject with the course shortname
+    $settings->add(new admin_setting_configcheckbox('block_quickmail_courseinsubject', get_string('courseinsubject', 'block_quickmail'),
+                                        get_string('courseinsubjectdesc', 'block_quickmail'), 0));
+
+    // Option for adding breadcrumb links to the top of the message body
+    $settings->add(new admin_setting_configcheckbox('block_quickmail_breadcrumbsinbody', get_string('breadcrumbsinbody', 'block_quickmail'),
+                                    get_string('breadcrumbsinbodydesc', 'block_quickmail'), 0));
 }

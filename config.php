@@ -4,14 +4,13 @@ require_once '../../config.php';
 require_once 'lib.php';
 require_once 'config_form.php';
 
-require_login();
-
 $courseid = required_param('courseid', PARAM_INT);
 $reset = optional_param('reset', 0, PARAM_INT);
 
 if(!$course = $DB->get_record('course', array('id' => $courseid))) {
     print_error('no_course', 'block_quickmail', '', $courseid);
 }
+require_login($course);
 
 $context= get_context_instance(CONTEXT_COURSE, $courseid);
 

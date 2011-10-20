@@ -4,8 +4,6 @@ require_once('../../config.php');
 require_once('lib.php');
 require_once('email_form.php');
 
-require_login();
-
 $courseid = required_param('courseid', PARAM_INT);
 $type = optional_param('type', '', PARAM_ACTION);
 $typeid = optional_param('typeid', 0, PARAM_INT);
@@ -15,6 +13,7 @@ $course = $DB->get_record('course', array('id' => $courseid));
 if(!$course) {
     print_error('no_course', 'block_quickmail', '', $courseid);
 }
+require_login($course);
 
 // They declared a type ... is it valid?
 if(!empty($type) and !in_array($type, array('log', 'drafts'))){
@@ -67,7 +66,12 @@ $PAGE->requires->js('/blocks/quickmail/js/selection.js');
 $course_roles = get_roles_used_in_context($context);
 
 // Selected filter roles
-$filter_roles = $DB->get_records_select('role', sprintf('id IN (%s)', $config['roleselection']));
+if (!empty($config['roleselection'])) {
+    list($sql, $params) = $DB->get_in_or_equal(explode(',', $config['roleselection']));
+    $filter_roles = $DB->get_records_select('role', "id $sql", $params);
+} else {
+    $filter_roles = array();
+}
 
 // These are the roles we want
 $roles = quickmail_filter_roles($course_roles, $filter_roles);
@@ -78,9 +82,10 @@ if(!has_capability('moodle/site:accessallgroups', $context)) {
     // Get users groups for FERPA reasons
     $mastercap = false;
     $mygroups = groups_get_user_groups($courseid);
-    $gids = implode(',', array_values($mygroups['0']));
+    $gids = array_values($mygroups['0']);
+    list($sql, $params) = $DB->get_in_or_equal($gids);
     $groups = empty($gids) ? array() :
-        $DB->get_records_select('groups', 'id IN ('.$gids.')');
+        $DB->get_records_select('groups', "id $sql", $params);
 } else {
     $mastercap = true;
     $groups = $allgroups;
@@ -93,8 +98,8 @@ $users = array();
 $users_to_roles = array();
 $users_to_groups = array();
 
-$everyone = get_role_users(0, $context, false, 'u.id, u.firstname, 
-            u.lastname, u.email, u.mailformat, u.maildisplay, 
+$everyone = get_role_users(0, $context, false, 'u.id, u.firstname,
+            u.lastname, u.email, u.mailformat, u.maildisplay,
             r.id AS roleid', 'u.lastname, u.firstname');
 
 foreach ($everyone as $userid => $user) {
@@ -108,11 +113,11 @@ foreach ($everyone as $userid => $user) {
     $filterd = quickmail_filter_roles($userroles, $roles);
 
     // Available groups
-    if((!$globalaccess and !$mastercap) and 
+    if((!$globalaccess and !$mastercap) and
         empty($gids) or empty($filterd) or $userid == $USER->id)
         continue;
     $users_to_groups[$userid] = array_map($groupmapper, $gids);
-    $users_to_roles[$userid] = $filterd; 
+    $users_to_roles[$userid] = $filterd;
     $users[$userid] = $user;
 }
 
@@ -123,23 +128,7 @@ if(empty($users)) {
 
 // Send emails or save drafts
 $warnings = array();
-if($email = data_submitted()) {
-    // Cancelled form
-    if(isset($email->cancel)) {
-        redirect(new moodle_url('/course/view.php?id='.$courseid));
-    }
-
-    // Got to have a subject
-    if(empty($email->subject)) {
-        $warnings[] = get_string('no_subject', 'block_quickmail'); 
-    }
-
-    // Got to have recipients
-    if(empty($email->mailto)) {
-        $warnings[] = get_string('no_users', 'block_quickmail');
-    }
-
-} else if(!empty($type)) {
+if(!empty($type)) {
     $email = $DB->get_record('block_quickmail_'.$type, array('id' => $typeid));
     $email->message = array(
         'text' => $email->message,
@@ -160,72 +149,16 @@ $email->typeid = $typeid;
 
 // Fill emailed users
 $selected = array();
+if (($mailto = optional_param('mailto', '', PARAM_SEQUENCE)) != '') {
+    $email->mailto = $mailto;
+}
 if(!empty($email->mailto)) {
     foreach(explode(',', $email->mailto) as $id) {
+        if (!array_key_exists($id, $users)) {
+            continue;
+        }
         $selected[$id] = $users[$id];
         unset($users[$id]);
-    }
-}
-
-// Empty warning and on submit
-$submitted = (isset($email->send) or isset($email->draft));
-if(empty($warnings) and $submitted) {
-
-    // Submitted data
-    $email->time = time();
-    $email->format = $email->message['format'];
-    $email->message = $email->message['text'];
-    $email->attachment = quickmail_attachment_names($email->attachments);
-
-    // Store email; id is needed for file storage
-    if(isset($email->send)) {
-        $id = $DB->insert_record('block_quickmail_log', $email);
-        $table = 'log'; 
-    } else if(isset($email->draft)) {
-        // Update draft
-        $table = 'drafts';
-        if(!empty($typeid)) { 
-            $id = $email->id = $typeid;
-            $DB->update_record('block_quickmail_drafts', $email);
-        } else {
-            $id = $DB->insert_record('block_quickmail_drafts', $email);
-        }
-    }
-
-    // An instance id is needed before storing the file repository
-    file_save_draft_area_files($email->attachments, $context->id, 
-                               'block_quickmail_'.$table, 'attachment', $id);
-
-    // Send emails
-    if(isset($email->send)) {
-        if($type == 'drafts') {
-            quickmail_draft_cleanup($typeid);
-        }
-
-        list($zipname, $zip, $actual_zip) = quickmail_process_attachments($context, $email, $table, $id);
-        // Attempt to add signature
-        if(!empty($sigs) and $email->sigid > -1) {
-            $email->message .= $sigs[$email->sigid]->signature;
-        }
-
-        foreach(explode(',', $email->mailto) as $userid) {
-            $success = email_to_user($selected[$userid], $USER, $email->subject, 
-                         strip_tags($email->message), $email->message, $zip, $zipname);
-
-            if(!$success) {
-                $warnings[] = get_string("no_email", 'block_quickmail', $selected[$userid]);
-            }
-        }
-
-        // Send to self if they want
-        if($email->receipt) {
-            email_to_user($USER, $USER, $email->subject, strip_tags($email->message), $email->message, $zip, $zipname);
-        }
-
-        // We're done with the zip.
-        if(!empty($zip)) {
-            unlink($actual_zip);
-        }
     }
 }
 
@@ -238,6 +171,83 @@ $form = new email_form(null, array(
     'users_to_groups' => $users_to_groups,
     'sigs' => array_map(function($sig) { return $sig->title; }, $sigs)
 ));
+
+if ($form->is_cancelled()) {
+    redirect(new moodle_url('/course/view.php?id='.$courseid));
+
+} else if (($data = $form->get_data()) and (isset($data->send) or isset($data->draft))) {
+    $email = $data;
+
+    // Submitted data
+    $email->time = time();
+    $email->format = $email->message['format'];
+    $email->message = $email->message['text'];
+    $email->attachment = quickmail_attachment_names($email->attachments);
+
+    // Store email; id is needed for file storage
+    if(isset($email->send)) {
+        $id = $DB->insert_record('block_quickmail_log', $email);
+        $table = 'log';
+    } else if(isset($email->draft)) {
+        // Update draft
+        $table = 'drafts';
+        if(!empty($typeid)) {
+            $id = $email->id = $typeid;
+            $DB->update_record('block_quickmail_drafts', $email);
+        } else {
+            $id = $DB->insert_record('block_quickmail_drafts', $email);
+        }
+    }
+
+    // An instance id is needed before storing the file repository
+    file_save_draft_area_files($email->attachments, $context->id,
+                               'block_quickmail_'.$table, 'attachment', $id);
+
+    // Send emails
+    if(isset($email->send)) {
+        if($type == 'drafts') {
+            quickmail_draft_cleanup($typeid);
+        }
+
+        list($zipname, $zip, $actual_zip) = quickmail_process_attachments($context, $email, $table, $id);
+        // Setup subject
+        if (!empty($config['courseinsubject'])) {
+            $subject = format_string($course->shortname) . ': ' . $email->subject;
+        } else {
+            $subject = $email->subject;
+        }
+        $messagehtml = format_text($email->message, $email->format);
+        if (!empty($config['breadcrumbsinbody'])) {
+            $messagehtml = html_writer::link(new moodle_url('/'), format_string($SITE->fullname)).' &gt; '.
+                           html_writer::link(new moodle_url('/course/view.php', array('id' => $course->id)), format_string($course->fullname)).
+                           "<br /><br /><br />".
+                           $messagehtml;
+        }
+        // Attempt to add signature
+        if(!empty($sigs) and $email->sigid > -1) {
+            $messagehtml .= $sigs[$email->sigid]->signature;
+        }
+        $messagetext = html_to_text($messagehtml, 0);
+
+        foreach(explode(',', $email->mailto) as $userid) {
+            $success = email_to_user($selected[$userid], $USER, $subject, $messagetext, $messagehtml, $zip, $zipname);
+
+            if(!$success) {
+                $warnings[] = get_string("no_email", 'block_quickmail', $selected[$userid]);
+            }
+        }
+
+        // Send to self if they want
+        if($email->receipt) {
+            email_to_user($USER, $USER, $subject, $messagetext, $messagehtml, $zip, $zipname);
+        }
+
+        // We're done with the zip.
+        if(!empty($zip)) {
+            unlink($actual_zip);
+        }
+    }
+}
 
 if(empty($email->attachments)) {
     if(!empty($type)) {
@@ -253,8 +263,8 @@ $form->set_data($email);
 // when successful
 // for now we route to their specific save action
 if(empty($warnings)) {
-    // Send, sends them back to the course 
-    if(isset($email->send))  
+    // Send, sends them back to the course
+    if(isset($email->send))
         redirect($CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.$course->id);
     else if (isset($email->draft))
         $warnings[] = get_string("changessaved");

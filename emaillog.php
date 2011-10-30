@@ -3,6 +3,8 @@
 require_once('../../config.php');
 require_once('lib.php');
 
+require_login();
+
 $courseid = required_param('courseid', PARAM_INT);
 $type = optional_param('type', 'log', PARAM_ACTION);
 $typeid = optional_param('typeid', 0, PARAM_INT);
@@ -14,23 +16,22 @@ $course = $DB->get_record('course', array('id' => $courseid));
 if(!$course) {
     print_error('no_course', 'block_quickmail', '', $courseid);
 }
-require_login($course);
 
 $context = get_context_instance(CONTEXT_COURSE, $courseid);
+
+// load confifgs... student should be able to view drafts
+$config = quickmail_load_config($courseid);
+
+$proper_permission = (has_capability('block/quickmail:cansend', $context) or
+                      !empty($config['allowstudents']));
+
+if(!$proper_permission) {
+    print_error('no_permission', 'block_quickmail');
+}
 
 // Has to be in on of these
 if(!in_array($type, array('log', 'drafts'))) {
     print_error('not_valid', 'block_quickmail', '', $type);
-}
-
-// load configs... student should be able to view drafts
-$config = quickmail_load_config($courseid);
-
-$proper_permission = (has_capability('block/quickmail:cansend', $context) or
-                     (!empty($config['allowstudents']) and $type == 'drafts'));
-
-if(!$proper_permission) {
-    print_error('no_permission', 'block_quickmail');
 }
 
 if(isset($action) and !in_array($action, array('delete', 'confirm'))) {
@@ -63,7 +64,7 @@ switch ($action) {
         if(quickmail_cleanup($dbtable, $typeid))
             redirect($CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.
             $courseid.'&amp;type='.$type);
-        else
+        else 
             print_error('delete_failed', 'block_quickmail');
     // Prints delete dialog
     case "delete":
@@ -110,7 +111,7 @@ function delete_dialog($courseid, $type, $typeid) {
             new html_table_cell($email->subject))
         )
     );
-    $msg = get_string('delete_confirm', 'block_quickmail', html_writer::table($table));
+    $msg = get_string('delete_confirm', 'block_quickmail', html_writer::table($table)); 
     // Dialog box
     $html = $OUTPUT->confirm($msg, $optionyes, $optionno);
     return $html;
@@ -122,10 +123,10 @@ function list_entries($courseid, $type, $page, $perpage, $count) {
     $dbtable = 'block_quickmail_'.$type;
 
     $table = new html_table();
-    $logs = $DB->get_records($dbtable, array('courseid' => $courseid, 'userid' => $USER->id),
+    $logs = $DB->get_records($dbtable, array('courseid' => $courseid, 'userid' => $USER->id), 
                             'time DESC', '*', $page * $perpage, $perpage * ($page + 1));
 
-    $table->head= array(get_string('date'), get_string('subject', 'block_quickmail'),
+    $table->head= array(get_string('date'), get_string('subject', 'block_quickmail'), 
         get_string('attachment', 'block_quickmail'), get_string('action'));
     $table->data = array_map(function($log) use ($OUTPUT, $type) {
         $date = new html_table_cell(quickmail_format_time($log->time));
@@ -136,7 +137,7 @@ function list_entries($courseid, $type, $page, $perpage, $count) {
                 html_writer::link(
                     new moodle_url('/blocks/quickmail/email.php?courseid='.
                                 $log->courseid.'&amp;type='.$type.'&amp;typeid='.$log->id),
-                    $OUTPUT->pix_icon("i/search", "Open Email")
+                    $OUTPUT->pix_icon("i/search", "Open Email") 
                 ),
                 // TODO: make this work
                 html_writer::link(

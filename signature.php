@@ -3,6 +3,8 @@
 require_once('../../config.php');
 require_once('signature_form.php');
 
+require_login();
+
 $courseid = optional_param('courseid', 0, PARAM_INT);
 $sigid = optional_param('id', 0, PARAM_INT);
 
@@ -11,30 +13,40 @@ if(!empty($courseid) and !$course = $DB->get_record('course', array('id' => $cou
     print_error('no_course', 'block_quickmail', $courseid);
 }
 
-$context = empty($courseid) ? get_context_instance(CONTEXT_SYSTEM) :
+$context = empty($courseid) ? get_context_instance(CONTEXT_SYSTEM) : 
                               get_context_instance(CONTEXT_COURSE, $courseid);
 
-require_login(empty($courseid) ? null : $courseid);
-
-$form = new signature_form();
-
-if ($form->is_cancelled()) {
-    $to = !empty($courseid) ? '/course/view.php?id='.$courseid : '/my';
-    redirect($CFG->wwwroot.$to);
-
-} else if ($data = $form->get_data()) {
-    $data->signature = $data->signature_editor['text'];
-
-    if (!empty($data->default_flag)) {
-        $DB->set_field('block_quickmail_signatures', 'default_flag', 0, array('userid'=>$USER->id, 'default_flag' => 1));
+if($data = data_submitted()) {
+    if(isset($data->cancel)) {
+        $to = !empty($courseid) ? '/course/view.php?id='.$courseid : '/my';
+        redirect($CFG->wwwroot.$to);
     }
-    if(empty($data->id)) {
-        $data->id = null;
-        $data->id = $DB->insert_record('block_quickmail_signatures', $data);
-    } else {
+
+    if(empty($data->title) or empty($data->signature_editor['text'])) {
+        $warnings[] = get_string('required', 'block_quickmail');
+    }
+
+    if(empty($warnings)) {
+        $data->signature = $data->signature_editor['text'];
+        if(empty($data->id)) {
+            $data->id = null;
+            $data->id = $DB->insert_record('block_quickmail_signatures', $data);
+        }
+        // Grab default if there is one
+        $default = $DB->get_record('block_quickmail_signatures', 
+            array('userid'=>$USER->id, 'default_flag' => 1));
+
+        // No default, force this one
+        // Default exists, but this one was made default
+        if($default and (!empty($data->default_flag) and $default->id != $data->id)) {
+            $default->default_flag = 0;
+            $DB->update_record('block_quickmail_signatures', $default);
+        } else {
+            $data->default_flag = 1;
+        }
         $DB->update_record('block_quickmail_signatures', $data);
+        $sigid = $data->id;
     }
-    redirect(new moodle_url('/blocks/quickmail/signature.php', array('courseid' => $courseid, 'id' => $data->id)));
 }
 
 
@@ -53,6 +65,7 @@ $title = "{$blockname}: {$header}";
 
 $PAGE->set_context($context);
 if($course) {
+    $PAGE->set_course($course);
     $PAGE->set_url('/course/view.php?id='.$courseid);
 }
 $PAGE->navbar->add($blockname);
@@ -63,21 +76,30 @@ $PAGE->set_heading($title);
 echo $OUTPUT->header();
 echo $OUTPUT->heading($header);
 
-$sig_options = array(0 => 'New '.get_string('sig', 'block_quickmail'));
-foreach ($sigs as $sig) {
-    $sig_options[$sig->id] = $sig->title;
+// TODO: dropdown
+$sig_options = array_merge(array(0 => 'New '.get_string('sig', 'block_quickmail')),
+    array_map(function($sig) { 
+        if($sig->default_flag) 
+            return $sig->title . ' (Default)';
+        else
+            return $sig->title; 
+}, $sigs));
 
-    if ($sig->default_flag) {
-        $sig_options[$sig->id] = $sig->title . ' (Default)';;
-    }
-}
 echo $OUTPUT->single_select('signature.php?courseid='.$courseid, 'id', $sig_options, $sigid);
 
 $sig = (!empty($sigid) and isset($sigs[$sigid])) ? $sigs[$sigid] : new stdClass;
 // Needed for form submission
 $sig->courseid = $courseid;
 
+$form = new signature_form();
+
 $form->set_data($sig);
 $form->display();
 
 echo $OUTPUT->footer();
+
+function grab_default() {
+    global $USER, $DB;
+    return $DB->get_field('block_quickmail_signatures', 'id', 
+        array('userid' => $USER->id, 'default_flag' => 1));
+}

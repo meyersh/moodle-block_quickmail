@@ -14,7 +14,7 @@ class signature_form extends moodleform {
 
         $mform->addElement('text', 'title', get_string('title', 'block_quickmail'));
         $mform->addElement('editor', 'signature_editor', get_string('sig', 'block_quickmail'));
-        $mform->addElement('advcheckbox', 'default_flag', get_string('default_flag', 'block_quickmail'));
+        $mform->addElement('checkbox', 'default_flag', get_string('default_flag', 'block_quickmail'));
         $buttons = array(
             $mform->createElement('submit', 'save', get_string('savechanges')),
             $mform->createElement('cancel')

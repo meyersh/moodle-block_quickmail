@@ -17,7 +17,7 @@ class block_quickmail extends block_list {
     }
 
     function get_content() {
-        global $USER, $CFG, $COURSE;
+        global $USER, $CFG, $COURSE, $OUTPUT;
 
         if($this->content !== NULL) {
             return $this->content;
@@ -40,17 +40,20 @@ class block_quickmail extends block_list {
             $send_email = '<a href="'.$CFG->wwwroot.'/blocks/quickmail/email.php?courseid='.
                           $COURSE->id.'">'.$send_email_str.'</a>';
             $this->content->items[] = $send_email; 
+            $this->content->icons[] = $OUTPUT->pix_icon('i/email', $send_email_str);
 
             $signature_str = get_string('signature', 'block_quickmail');
             $signature = '<a href="'.$CFG->wwwroot.'/blocks/quickmail/signature.php'.
                          '?courseid='.$COURSE->id.'">'.$signature_str.'</a>'; 
             $this->content->items[] = $signature;
+            $this->content->icons[] = $OUTPUT->pix_icon('i/edit', $signature_str);
 
             // Drafts
             $drafts_email_str = get_string('drafts', 'block_quickmail');
             $drafts = '<a href="'.$CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.
                         $COURSE->id.'&amp;type=drafts">'.$drafts_email_str.'</a>';
             $this->content->items[] = $drafts;
+            $this->content->icons[] = $OUTPUT->pix_icon('i/settings', $drafts_email_str);
         }
 
         // History can't be view by students
@@ -59,6 +62,19 @@ class block_quickmail extends block_list {
             $history = '<a href="'.$CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.
                         $COURSE->id.'">'.$history_str.'</a>';
             $this->content->items[] = $history;
+            $this->content->icons[] = $OUTPUT->pix_icon('i/settings', $history_str);
+        }
+
+        // Can config?
+        if (has_capability('block/quickmail:canconfig', $context)) {
+            $config_str = get_string('config', 'block_quickmail');
+            $config = html_writer::link(
+                new moodle_url('/blocks/quickmail/config.php', array (
+                    'courseid' => $COURSE->id
+                )), $config_str
+            );
+            $this->content->items[] = $config;
+            $this->content->icons[] = $OUTPUT->pix_icon('i/settings', $config_str);
         }
 
         return $this->content;

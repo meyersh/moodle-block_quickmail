@@ -56,47 +56,64 @@ $PAGE->set_title($blockname . ': '. $header);
 $PAGE->set_heading($blockname . ': '.$header);
 $PAGE->set_url('/course/view.php?id='.$courseid);
 
-$PAGE->requires->js('/lib/jquery.js');
-$PAGE->requires->js('/blocks/quickmail/selection.js');
+$internal_lib = '/lib/jquery.js';
+$jquery = file_exists($CFG->dirroot.$internal_lib) ? $internal_lib :
+    '/blocks/quickmail/js/jquery-1.6.min.js';
 
-// Looking at a pure Moodle solution
-$roles = get_roles_used_in_context($context);
+$PAGE->requires->js($jquery);
+$PAGE->requires->js('/blocks/quickmail/js/selection.js');
 
-// Get all the groups if user can edit groups 
-if(has_capability('moodle/site:accessallgroups', $context)) {
-    $groups = groups_get_all_groups($courseid);
+// Roles in the course
+$course_roles = get_roles_used_in_context($context);
+
+// Selected filter roles
+$filter_roles = $DB->get_records_select('role', sprintf('id IN (%s)', $config['roleselection']));
+
+// These are the roles we want
+$roles = quickmail_filter_roles($course_roles, $filter_roles);
+
+// Get all the groups if user can edit groups
+$allgroups = groups_get_all_groups($courseid);
+if(!has_capability('moodle/site:accessallgroups', $context)) {
+    // Get users groups for FERPA reasons
+    $mastercap = false;
+    $mygroups = groups_get_user_groups($courseid);
+    $gids = implode(',', array_values($mygroups['0']));
+    $groups = empty($gids) ? array() :
+        $DB->get_records_select('groups', 'id IN ('.$gids.')');
 } else {
-    $groups = groups_get_user_groups($courseid);
+    $mastercap = true;
+    $groups = $allgroups;
 }
+
+$globalaccess = empty($allgroups);
 
 // Fill the course users by
 $users = array();
 $users_to_roles = array();
 $users_to_groups = array();
 
-// Grab users by group, for FERPA reasons
-foreach($groups as $groupid => $group) {
-    $group_users = get_role_users(0, $context, false, 'u.id, u.firstname, u.lastname, 
-                   u.email, u.mailformat, u.maildisplay, r.id AS roleid', 
-                   'u.lastname, u.firstname', null, $groupid); 
+$everyone = get_role_users(0, $context, false, 'u.id, u.firstname, 
+            u.lastname, u.email, u.mailformat, u.maildisplay, 
+            r.id AS roleid', 'u.lastname, u.firstname');
 
-    foreach($group_users as $userid => $user) {
-        // Only need to grab the user roles in course once 
-        if(!isset($users_to_roles[$userid])) {
-            $users_to_roles[$userid] = get_user_roles($context, $userid); 
-        }
+foreach ($everyone as $userid => $user) {
+    $usergroups = groups_get_user_groups($courseid, $userid);
 
-        if(!isset($users_to_groups[$userid])) {
-            $users_to_groups[$userid] = array();
-        }
-        $users_to_groups[$userid][$groupid] = $group;
+    $groupmapper = function($id) use ($allgroups) { return $allgroups[$id]; };
+    $gids = ($globalaccess or $mastercap) ? array_values($usergroups['0']) :
+            array_intersect(array_values($mygroups['0']), array_values($usergroups['0']));
 
-        if(isset($users[$userid])) {
-            continue;
-        }
+    $userroles = get_user_roles($context, $userid);
+    $filterd = quickmail_filter_roles($userroles, $roles);
 
-        $users[$userid] = $user;
-    }
+    // Available groups
+    if((!$globalaccess and !$mastercap) and 
+        empty($gids) or empty($filterd) or $userid == $USER->id)
+        continue;
+    $users_to_groups[$userid] = array_map($groupmapper, $gids);
+    $users_to_roles[$userid] = $filterd; 
+    $users[$userid] = $user;
 }
 
 // Can't do anything without users
@@ -152,7 +169,8 @@ if(!empty($email->mailto)) {
 
 // Empty warning and on submit
 $submitted = (isset($email->send) or isset($email->draft));
-if(empty($warnings) && $submitted) {
+if(empty($warnings) and $submitted) {
+
     // Submitted data
     $email->time = time();
     $email->format = $email->message['format'];
@@ -184,7 +202,7 @@ if(empty($warnings) && $submitted) {
             quickmail_draft_cleanup($typeid);
         }
 
-        list($zip, $zipname, $actual_zip) = quickmail_process_attachments($context, $email, $table, $id);
+        list($zipname, $zip, $actual_zip) = quickmail_process_attachments($context, $email, $table, $id);
         // Attempt to add signature
         if(!empty($sigs) and $email->sigid > -1) {
             $email->message .= $sigs[$email->sigid]->signature;
@@ -236,8 +254,8 @@ $form->set_data($email);
 // for now we route to their specific save action
 if(empty($warnings)) {
     // Send, sends them back to the course 
-    if(isset($email->send)) {} 
-        //redirect($CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.$course->id);
+    if(isset($email->send))  
+        redirect($CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.$course->id);
     else if (isset($email->draft))
         $warnings[] = get_string("changessaved");
 }

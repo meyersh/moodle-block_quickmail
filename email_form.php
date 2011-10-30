@@ -51,15 +51,21 @@ class email_form extends moodleform {
         $mform->addElement('hidden', 'type', '');
         $mform->addElement('hidden', 'typeid', 0);
 
+        $links = array();
         $email_link = 'emaillog.php?courseid='.$COURSE->id.'&amp;type=';
         $draft_link = '<center style="margin-left: -13%"><a href="'.$email_link.'drafts">'.
                         get_string('drafts', 'block_quickmail').'</a>';
-        $history_link = '<a href="'.$email_link.'log">'.
-                        get_string('history', 'block_quickmail').'</a></center>';
-        $drafts =& $mform->createElement('static', 'draft_link', '', $draft_link);
-        $history =& $mform->createElement('static', 'history_link', '', $history_link); 
+        $links[] =& $mform->createElement('static', 'draft_link', '', $draft_link);
 
-        $mform->addGroup(array($drafts, $history), 'links', '&nbsp;', array(' | '), false);
+        $context= get_context_instance(CONTEXT_COURSE, $COURSE->id);
+
+        if(has_capability('block/quickmail:cansend', $context)) {
+            $history_link = '<a href="'.$email_link.'log">'.
+                            get_string('history', 'block_quickmail').'</a></center>';
+            $links[] =& $mform->createElement('static', 'history_link', '', $history_link); 
+        }
+
+        $mform->addGroup($links, 'links', '&nbsp;', array(' | '), false);
 
         $mform->addElement('static', 'from', get_string('from', 'block_quickmail'), $USER->email);
         $mform->addElement('static', 'selectors', '', '
@@ -134,7 +140,14 @@ class email_form extends moodleform {
         $options = $this->_customdata['sigs'] + array(-1 => 'No '. get_string('sig', 'block_quickmail'));
         $mform->addElement('select', 'sigid', get_string('signature', 'block_quickmail'), $options);
 
-        // TODO: add signature, receipts
+        $radio = array(
+            $mform->createElement('radio', 'receipt', '', get_string('yes'), 1),
+            $mform->createElement('radio', 'receipt', '', get_string('no'), 0)
+        );
+
+        $mform->addGroup($radio, 'receipt_action', get_string('receipt', 'block_quickmail'), array(' '), false);
+
+        // TODO: add receipts
         $buttons = array();
         $buttons[] =& $mform->createElement('submit', 'send', get_string('send_email', 'block_quickmail'));
         $buttons[] =& $mform->createElement('submit', 'draft', get_string('save_draft', 'block_quickmail'));

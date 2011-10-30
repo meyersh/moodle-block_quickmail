@@ -19,19 +19,19 @@ if(!$course) {
 
 $context = get_context_instance(CONTEXT_COURSE, $courseid);
 
-// load confifgs... student should be able to view drafts
-$config = quickmail_load_config($courseid);
-
-$proper_permission = (has_capability('block/quickmail:cansend', $context) or
-                      !empty($config['allowstudents']));
-
-if(!$proper_permission) {
-    print_error('no_permission', 'block_quickmail');
-}
-
 // Has to be in on of these
 if(!in_array($type, array('log', 'drafts'))) {
     print_error('not_valid', 'block_quickmail', '', $type);
+}
+
+// load configs... student should be able to view drafts
+$config = quickmail_load_config($courseid);
+
+$proper_permission = (has_capability('block/quickmail:cansend', $context) or
+                     (!empty($config['allowstudents']) and $type == 'drafts'));
+
+if(!$proper_permission) {
+    print_error('no_permission', 'block_quickmail');
 }
 
 if(isset($action) and !in_array($action, array('delete', 'confirm'))) {

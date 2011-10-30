@@ -30,13 +30,13 @@ function quickmail_process_attachments($context, $email, $table, $id) {
     $moodle_base = "$CFG->dataroot/$base_path";
     if(!file_exists($moodle_base)) {
         mkdir($moodle_base, 0777, true);
-    } 
+    }
 
-    $zipname = $zip = '';
+    $zipname = $zip = $actual_zip = '';
     if(!empty($email->attachment)) {
         $zipname = "attachment.zip";
         $zip = "$base_path/$zipname";
-        $actual_zip = "$moodle_base/$zipname"; 
+        $actual_zip = "$moodle_base/$zipname";
 
         $packer = get_file_packer();
         $fs = get_file_storage();
@@ -50,9 +50,9 @@ function quickmail_process_attachments($context, $email, $table, $id) {
         }
 
         $packer->archive_to_pathname($stored_files, $actual_zip);
-    }        
+    }
 
-    return array($zip, $zipname, $actual_zip);
+    return array($zipname, $zip, $actual_zip);
 }
 
 function quickmail_attachment_names($draft) {
@@ -69,22 +69,43 @@ function quickmail_attachment_names($draft) {
     return implode(',', array_map(function($file) { return $file->get_filename(); }, $only_files));
 }
 
+function quickmail_filter_roles($user_roles, $master_roles) {
+    return array_uintersect($master_roles, $user_roles, function($a, $b) {
+        return strcmp($a->shortname, $b->shortname);
+    });
+}
+
 function quickmail_load_config($courseid) {
     global $DB;
 
     $config = $DB->get_records_menu('block_quickmail_config', 
                                     array('coursesid' => $courseid), '', 'name,value');
-    
+
     if(empty($config)) {
-        // TODO: grab admin defaults
-        $interest = array('student', 'editingteacher', 'teacher');
-        $roles = array_map(function($inter) use($DB) {
-            return $DB->get_field('role', 'id', array('shortname' => $inter)); 
-        }, $interest);
-        $config = array('allowstudents' => 0, 
-                        'roleselection' => implode(',', $roles)); 
+        $allowstudents = get_config(null, 'block_quickmail_allowstudents');
+        $roleselection = get_config(null, 'block_quickmail_roleselection');
+        $config = array('allowstudents' => $allowstudents, 
+                        'roleselection' => $roleselection); 
     }
 
     return $config;
 }
 
+function quickmail_default_config($courseid) {
+    global $DB;
+    $DB->delete_records('block_quickmail_config', array('coursesid' => $courseid));
+}
+
+function quickmail_save_config($courseid, $data) {
+    global $DB;
+
+    quickmail_default_config($courseid);
+
+    foreach ($data as $name => $value) {
+        $config = new stdClass;
+        $config->coursesid = $courseid;
+        $config->name = $name;
+        $config->value = $value;
+        $DB->insert_record('block_quickmail_config', $config);
+    }
+}

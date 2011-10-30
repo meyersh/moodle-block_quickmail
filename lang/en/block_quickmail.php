@@ -3,6 +3,7 @@
 $string['pluginname'] = 'Quickmail';
 $string['quickmail:cansend'] = "Allows users to send email through Quickmail";
 $string['quickmail:canconfig'] = "Allows users to configure Quickmail instance.";
+$string['quickmail:canimpersonate'] = "Allows users to log in as other users and view history.";
 $string['composenew'] = 'Compose New Email'; 
 $string['email'] = 'Email';
 $string['drafts'] = 'View Drafts';
@@ -30,7 +31,13 @@ $string['delete_confirm'] = 'Are you sure you want to delete message with the fo
 $string['title'] = 'Title';
 $string['sig'] ='Signature';
 $string['default_flag'] = 'Default';
+$string['config'] = 'Configuration';
+$string['receipt'] = 'Receive a copy';
 
+// Config form strings
+$string['allowstudents'] = 'Allow students to use Quickmail';
+$string['select_roles'] = 'Roles to filter by';
+$string['reset'] = 'Restore System Defaults';
 
 $string['no_type'] = '{$a} is not in the acceptable type viewer. Please use the applciation correctly.';
 $string['no_email'] = 'Could not email {$a->firstname} {$a->lastname}.';

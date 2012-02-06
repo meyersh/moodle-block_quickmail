@@ -9,7 +9,8 @@ if($ADMIN->fulltree) {
         'block_quickmail'), 0, $select));
 
     $roles = $DB->get_records_menu('role', null, 'sortorder ASC', 'id, name');
-    $defaults = array_map(function ($sn) use ($DB) {
+    $defaults = array_map(function ($sn) {
+        global $DB;
         return $DB->get_field('role', 'id', array('shortname' => $sn));
     }, array('editingteacher', 'teacher', 'student'));
     $settings->add(new admin_setting_configmultiselect('block_quickmail_roleselection',

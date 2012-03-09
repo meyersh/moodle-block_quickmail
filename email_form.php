@@ -1,5 +1,7 @@
 <?php
 
+// Written at Louisiana State University
+
 require_once($CFG->libdir . '/formslib.php');
 
 class email_form extends moodleform {
@@ -11,12 +13,12 @@ class email_form extends moodleform {
     private function option_display($user) {
         $users_to_groups = $this->_customdata['users_to_groups'];
 
-        $groups = (empty($users_to_groups[$user->id])) ?
-                  get_string('no_section', 'block_quickmail') :
-                  implode(',', array_map(function($group) {
-                    return $group->name;
-                  },
-                  $users_to_groups[$user->id]));
+        if (empty($users_to_groups[$user->id])) {
+            $groups = quickmail::_s('no_section');
+        } else {
+            $only_names = function($group) { return $group->name; };
+            $groups = implode(',', array_map($only_names, $users_to_groups[$user->id]));
+        }
 
         return sprintf("%s (%s)", fullname($user), $groups);
     }
@@ -25,17 +27,20 @@ class email_form extends moodleform {
         $users_to_groups = $this->_customdata['users_to_groups'];
         $users_to_roles = $this->_customdata['users_to_roles'];
 
-        $roles = implode(',', array_map(function($role) {
-            return $role->shortname;
-        }, $users_to_roles[$user->id]));
+        $only_sn = function($role) { return $role->shortname; };
+
+        $roles = implode(',', array_map($only_sn, $users_to_roles[$user->id]));
 
         // everyone defaults to none
         $roles .= ',none';
 
-        $groups = (empty($users_to_groups[$user->id])) ? 0 : implode(',',
-            array_map(function($group) {
-            return $group->id;
-        }, $users_to_groups[$user->id]));
+        if (empty($users_to_groups[$user->id])) {
+            $groups = 0;
+        } else {
+            $only_id = function($group) { return $group->id; };
+            $groups = implode(',', array_map($only_id, $users_to_groups[$user->id]));
+            $groups .= ',all';
+        }
 
         return sprintf("%s %s %s", $user->id, $groups, $roles);
     }
@@ -45,44 +50,41 @@ class email_form extends moodleform {
 
         $mform =& $this->_form;
 
-        $mform->addElement('hidden', 'mailto');
-        $mform->setType('mailto', PARAM_SEQUENCE);
+        $mform->addElement('hidden', 'mailto', '');
         $mform->addElement('hidden', 'userid', $USER->id);
-        $mform->setType('userid', PARAM_INT);
         $mform->addElement('hidden', 'courseid', $COURSE->id);
-        $mform->setType('courseid', PARAM_INT);
         $mform->addElement('hidden', 'type', '');
-        $mform->setType('type', PARAM_ACTION);
         $mform->addElement('hidden', 'typeid', 0);
-        $mform->setType('typeid', PARAM_INT);
 
         $links = array();
-        $email_link = 'emaillog.php?courseid='.$COURSE->id.'&amp;type=';
-        $draft_link = '<center style="margin-left: -13%"><a href="'.$email_link.'drafts">'.
-                        get_string('drafts', 'block_quickmail').'</a>';
+        $gen_url = function($type) use ($COURSE) {
+            $email_param = array('courseid' => $COURSE->id, 'type' => $type);
+            return new moodle_url('emaillog.php', $email_param);
+        };
+
+        $draft_link = html_writer::link ($gen_url('drafts'), quickmail::_s('drafts'));
         $links[] =& $mform->createElement('static', 'draft_link', '', $draft_link);
 
         $context= get_context_instance(CONTEXT_COURSE, $COURSE->id);
 
         if(has_capability('block/quickmail:cansend', $context)) {
-            $history_link = '<a href="'.$email_link.'log">'.
-                            get_string('history', 'block_quickmail').'</a></center>';
-            $links[] =& $mform->createElement('static', 'history_link', '', $history_link);
+            $history_link = html_writer::link($gen_url('log'), quickmail::_s('history'));
+            $links[] =& $mform->createElement('static', 'history_link', '', $history_link); 
         }
 
         $mform->addGroup($links, 'links', '&nbsp;', array(' | '), false);
 
-        $mform->addElement('static', 'from', get_string('from', 'block_quickmail'), $USER->email);
+        $mform->addElement('static', 'from', quickmail::_s('from'), $USER->email);
         $mform->addElement('static', 'selectors', '', '
             <table>
                 <tr>
                     <td>
-                        <strong class="required">'.get_string('selected', 'block_quickmail').'
+                        <strong class="required">'.quickmail::_s('selected').'
                             <img class="req" title="Required field" alt="Required field" src="'.$OUTPUT->pix_url('req').'"/>
                         </strong>
                     </td>
                     <td align="right" colspan="2">
-                        <strong>'.get_string('role_filter', 'block_quickmail').'</strong>
+                        <strong>'.quickmail::_s('role_filter').'</strong>
                     </td>
                 </tr>
                 <tr>
@@ -93,37 +95,39 @@ class email_form extends moodleform {
                     </td>
                     <td width="100" align="center">
                         <p>
-                            <input type="button" id="add_button" value="'.get_string('add_button', 'block_quickmail').'"/>
+                            <input type="button" id="add_button" value="'.$OUTPUT->larrow().' '.quickmail::_s('add_button').'"/>
                         </p>
                         <p>
-                            <input type="button" id="remove_button" value="'.get_string('remove_button', 'block_quickmail').'"/>
+                            <input type="button" id="remove_button" value="'.quickmail::_s('remove_button').' '.$OUTPUT->rarrow().'"/>
                         </p>
                         <p>
-                            <input type="button" id="add_all" value="'.get_string('add_all', 'block_quickmail').'"/>
+                            <input type="button" id="add_all" value="'.quickmail::_s('add_all').'"/>
                         </p>
                         <p>
-                            <input type="button" id="remove_all" value="'.get_string('remove_all', 'block_quickmail').'"/>
+                            <input type="button" id="remove_all" value="'.quickmail::_s('remove_all').'"/>
                         </p>
                     </td>
                     <td width="300" align="right">
                         <div>
                             <select id="roles">
-                                <option value="none" selected>'.get_string('no_filter', 'block_quickmail').'</option>
+                                <option value="none" selected>'.quickmail::_s('no_filter').'</option>
                                 '.array_reduce($this->_customdata['roles'], function($in, $role) {
                                     return $in . '<option value="'.$role->shortname.'">'.$role->name.'</option>';
                                  }, '').'
                             </select>
                         </div>
-                        <div class="object_labels"><strong>'.get_string('potential_sections', 'block_quickmail').'</strong></div>
+                        <div class="object_labels"><strong>'.quickmail::_s('potential_sections').'</strong></div>
                         <div>
                             <select id="groups" multiple size="5">
+                                 '.(empty($this->_customdata['groups']) ? '' :
+                                 '<option SELECTED value="all">'.quickmail::_s('all_sections')).'</option>
                                 '.array_reduce($this->_customdata['groups'], function($in, $group) {
                                     return $in . '<option value="'.$group->id.'">'.$group->name.'</option>';
                                  }, '').'
-                                 <option value="0">'.get_string('no_section', 'block_quickmail').'</option>
+                                 <option value="0">'.quickmail::_s('no_section').'</option>
                             </select>
                         </div>
-                        <div class="object_labels"><strong>'.get_string('potential_users', 'block_quickmail').'</strong></div>
+                        <div class="object_labels"><strong>'.quickmail::_s('potential_users').'</strong></div>
                         <div>
                             <select id="from_users" multiple size="20">
                                 '.array_reduce($this->_customdata['users'], array($this, 'reduce_users'), '').'
@@ -134,39 +138,29 @@ class email_form extends moodleform {
             </table>
         ');
 
-        $mform->addElement('filemanager', 'attachments', get_string('attachment', 'block_quickmail'));
+        $mform->addElement('filemanager', 'attachments', quickmail::_s('attachment'));
 
-        $mform->addElement('text', 'subject', get_string('subject', 'block_quickmail'));
+        $mform->addElement('text', 'subject', quickmail::_s('subject'));
         $mform->setType('subject', PARAM_TEXT);
         $mform->addRule('subject', null, 'required');
 
-        $mform->addElement('editor', 'message', get_string('message', 'block_quickmail'));
+        $mform->addElement('editor', 'message', quickmail::_s('message'));
 
-        $options = $this->_customdata['sigs'] + array(-1 => 'No '. get_string('sig', 'block_quickmail'));
-        $mform->addElement('select', 'sigid', get_string('signature', 'block_quickmail'), $options);
+        $options = $this->_customdata['sigs'] + array(-1 => 'No '. quickmail::_s('sig'));
+        $mform->addElement('select', 'sigid', quickmail::_s('signature'), $options);
 
         $radio = array(
             $mform->createElement('radio', 'receipt', '', get_string('yes'), 1),
             $mform->createElement('radio', 'receipt', '', get_string('no'), 0)
         );
 
-        $mform->addGroup($radio, 'receipt_action', get_string('receipt', 'block_quickmail'), array(' '), false);
+        $mform->addGroup($radio, 'receipt_action', quickmail::_s('receipt'), array(' '), false);
 
-        // TODO: add receipts
         $buttons = array();
-        $buttons[] =& $mform->createElement('submit', 'send', get_string('send_email', 'block_quickmail'));
-        $buttons[] =& $mform->createElement('submit', 'draft', get_string('save_draft', 'block_quickmail'));
+        $buttons[] =& $mform->createElement('submit', 'send', quickmail::_s('send_email'));
+        $buttons[] =& $mform->createElement('submit', 'draft', quickmail::_s('save_draft'));
         $buttons[] =& $mform->createElement('submit', 'cancel', get_string('cancel'));
 
-        $mform->addGroup($buttons, 'buttons', get_string('actions', 'block_quickmail'), array(' '), false);
-    }
-
-    function validation($data, $files) {
-        $errors = array();
-
-        if (empty($data['mailto'])) {
-            $errors['selectors'] = get_string('err_required', 'form');
-        }
-        return $errors;
+        $mform->addGroup($buttons, 'buttons', quickmail::_s('actions'), array(' '), false);
     }
 }

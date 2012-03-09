@@ -1,85 +1,121 @@
 <?php
 
+// Written at Louisiana State University
+
 require_once('../../config.php');
 require_once('lib.php');
 
+require_login();
+
 $courseid = required_param('courseid', PARAM_INT);
-$type = optional_param('type', 'log', PARAM_ACTION);
+$type = optional_param('type', 'log', PARAM_ALPHA);
 $typeid = optional_param('typeid', 0, PARAM_INT);
-$action = optional_param('action', null, PARAM_ACTION);
+$action = optional_param('action', null, PARAM_ALPHA);
 $page = optional_param('page', 0, PARAM_INT);
 $perpage = optional_param('perpage', 10, PARAM_INT);
+$userid = optional_param('userid', $USER->id, PARAM_INT);
 
-$course = $DB->get_record('course', array('id' => $courseid));
-if(!$course) {
+if (!$course = $DB->get_record('course', array('id' => $courseid))) {
     print_error('no_course', 'block_quickmail', '', $courseid);
 }
-require_login($course);
 
 $context = get_context_instance(CONTEXT_COURSE, $courseid);
 
 // Has to be in on of these
-if(!in_array($type, array('log', 'drafts'))) {
+if (!in_array($type, array('log', 'drafts'))) {
     print_error('not_valid', 'block_quickmail', '', $type);
 }
 
-// load configs... student should be able to view drafts
-$config = quickmail_load_config($courseid);
+$canimpersonate = has_capability('block/quickmail:canimpersonate', $context);
+if (!$canimpersonate and $userid != $USER->id) {
+    print_error('not_valid_user', 'block_quickmail');
+}
 
-$proper_permission = (has_capability('block/quickmail:cansend', $context) or
-                     (!empty($config['allowstudents']) and $type == 'drafts'));
+$config = quickmail::load_config($courseid);
 
-if(!$proper_permission) {
+$proper_permission = (
+    has_capability('block/quickmail:cansend', $context) or
+    (!empty($config['allowstudents']) and $type == 'drafts')
+);
+
+if (!$proper_permission) {
     print_error('no_permission', 'block_quickmail');
 }
 
-if(isset($action) and !in_array($action, array('delete', 'confirm'))) {
+if (isset($action) and !in_array($action, array('delete', 'confirm'))) {
     print_error('not_valid_action', 'block_quickmail', '', $action);
 }
 
-if(isset($action) and empty($typeid)) {
+if (isset($action) and empty($typeid)) {
     print_error('not_valid_typeid', 'block_quickmail', '', $action);
 }
 
-$blockname= get_string('pluginname', 'block_quickmail');
-$header = get_string($type, 'block_quickmail');
+$blockname = quickmail::_s('pluginname');
+$header = quickmail::_s($type);
 
 $PAGE->set_context($context);
 $PAGE->set_course($course);
 $PAGE->navbar->add($blockname);
 $PAGE->navbar->add($header);
-$PAGE->set_title($blockname . ': '. $header);
-$PAGE->set_heading($blockname . ': '.$header);
-$PAGE->set_url('/course/view.php?id='.$courseid);
+$PAGE->set_title($blockname . ': ' . $header);
+$PAGE->set_heading($blockname . ': ' . $header);
+$PAGE->set_url('/course/view.php', array('id' => $courseid));
+$PAGE->set_pagetype($blockname);
 
 $dbtable = 'block_quickmail_' . $type;
-$count = $DB->count_records($dbtable,
-                            array('courseid' => $courseid, 'userid' => $USER->id));
 
-// Perform actions
+$params = array('userid' => $userid, 'courseid' => $courseid);
+$count = $DB->count_records($dbtable, $params);
+
 switch ($action) {
-    // Confirm deletion, routes back to itself
     case "confirm":
-        if(quickmail_cleanup($dbtable, $typeid))
-            redirect($CFG->wwwroot.'/blocks/quickmail/emaillog.php?courseid='.
-            $courseid.'&amp;type='.$type);
-        else
-            print_error('delete_failed', 'block_quickmail');
-    // Prints delete dialog
+        if(quickmail::cleanup($dbtable, $typeid)) {
+            $url = new moodle_url('/blocks/quickmail/emaillog.php', array(
+                'courseid' => $courseid,
+                'type' => $type
+            ));
+            redirect($url);
+        } else
+            print_error('delete_failed', 'block_quickmail', '', $typeid);
     case "delete":
-        $html = delete_dialog($courseid, $type, $typeid);
+        $html = quickmail::delete_dialog($courseid, $type, $typeid);
         break;
-    // List entries as default
     default:
-        $html = list_entries($courseid, $type, $page, $perpage, $count);
+        $html = quickmail::list_entries($courseid, $type, $page, $perpage, $userid, $count);
+}
+
+if($canimpersonate and $USER->id != $userid) {
+    $user = $DB->get_record('user', array('id' => $userid));
+    $header .= ' for '. fullname($user);
 }
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading($header);
 
+if($canimpersonate) {
+    $sql = "SELECT DISTINCT(l.userid), u.firstname, u.lastname
+                FROM {block_quickmail_$type} l,
+                     {user} u
+                WHERE u.id = l.userid AND courseid = ? ORDER BY u.lastname";
+    $users = $DB->get_records_sql($sql, array($courseid));
+
+    $user_options = array_map(function($user) { return fullname($user); }, $users);
+
+    $url = new moodle_url('emaillog.php', array(
+        'courseid' => $courseid,
+        'type' => $type
+    ));
+
+    $default_option = array('' => quickmail::_s('select_users'));
+
+    echo $OUTPUT->single_select($url, 'userid', $user_options, $userid, $default_option);
+}
+
 if(empty($count)) {
-    echo $OUTPUT->notification(get_string('no_'.$type, 'block_quickmail'));
+    echo $OUTPUT->notification(quickmail::_s('no_'.$type));
+
     echo $OUTPUT->continue_button('/blocks/quickmail/email.php?courseid='.$courseid);
+
     echo $OUTPUT->footer();
     exit;
 }
@@ -87,71 +123,3 @@ if(empty($count)) {
 echo $html;
 
 echo $OUTPUT->footer();
-
-// Display functions
-function delete_dialog($courseid, $type, $typeid) {
-    global $CFG, $DB, $USER, $OUTPUT;
-
-    $email = $DB->get_record('block_quickmail_'.$type, array('id' => $typeid));
-    if(empty($email))
-        print_error('not_valid_typeid', 'block_quickmail', '', $typeid);
-
-    // Readable time
-    $optionyes = '/blocks/quickmail/emaillog.php?courseid='.$courseid.
-                 '&amp;type='.$type.'&amp;typeid='.$typeid.'&amp;action=confirm';
-    $optionno = '/blocks/quickmail/emaillog.php?courseid='.$courseid.
-                '&amp;type='.$type;
-
-    $table = new html_table();
-    $table->head = array(get_string('date'), get_string('subject', 'block_quickmail'));
-    $table->data = array(
-        new html_table_row(array(
-            new html_table_cell(quickmail_format_time($email->time)),
-            new html_table_cell($email->subject))
-        )
-    );
-    $msg = get_string('delete_confirm', 'block_quickmail', html_writer::table($table));
-    // Dialog box
-    $html = $OUTPUT->confirm($msg, $optionyes, $optionno);
-    return $html;
-}
-
-function list_entries($courseid, $type, $page, $perpage, $count) {
-    global $CFG, $DB, $USER, $OUTPUT;
-
-    $dbtable = 'block_quickmail_'.$type;
-
-    $table = new html_table();
-    $logs = $DB->get_records($dbtable, array('courseid' => $courseid, 'userid' => $USER->id),
-                            'time DESC', '*', $page * $perpage, $perpage * ($page + 1));
-
-    $table->head= array(get_string('date'), get_string('subject', 'block_quickmail'),
-        get_string('attachment', 'block_quickmail'), get_string('action'));
-    $table->data = array_map(function($log) use ($OUTPUT, $type) {
-        $date = new html_table_cell(quickmail_format_time($log->time));
-        $subject = new html_table_cell($log->subject);
-        $attachments = new html_table_cell($log->attachment);
-        $actions = new html_table_cell(
-            implode(' ', array(
-                html_writer::link(
-                    new moodle_url('/blocks/quickmail/email.php?courseid='.
-                                $log->courseid.'&amp;type='.$type.'&amp;typeid='.$log->id),
-                    $OUTPUT->pix_icon("i/search", "Open Email")
-                ),
-                // TODO: make this work
-                html_writer::link(
-                    new moodle_url('/blocks/quickmail/emaillog.php?courseid='.
-                    $log->courseid.'&amp;type='.$type.'&amp;typeid='.
-                    $log->id.'&amp;action=delete'),
-                    $OUTPUT->pix_icon("i/cross_red_big", "Delete Email")
-                )
-            ))
-        );
-        return new html_table_row(array($date, $subject, $attachments, $actions));
-    }, $logs);
-
-
-    $html = $OUTPUT->paging_bar($count, $page, $perpage, '/blocks/quickmail/emaillog.php?courseid='.$courseid);
-    $html .= html_writer::table($table);
-    return $html;
-}
